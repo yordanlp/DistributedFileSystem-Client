@@ -52,7 +52,7 @@ namespace HttpClient.Controllers {
             }
         }
 
-        [HttpDelete("DeleteFile")]
+        [HttpDelete("DeleteFile/{fileName}")]
         public async Task<IActionResult> DeleteFile(string fileName)
         {
             try
