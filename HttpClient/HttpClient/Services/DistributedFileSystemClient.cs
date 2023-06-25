@@ -37,15 +37,15 @@ namespace Client {
 
             // Send a request to the master server to get the chunk servers
             var chunkServers = await $"{masterServerUrl}/api/ChunkServers".GetJsonAsync<ChunkServer[]>();
-            RandomShuffle(chunkServers);
 
             var fileResponse = await $"{masterServerUrl}/api/Files/".PostJsonAsync(new { Name = fileName, Size = fileContent.Length, NumberOfChunks = chunks.Length });
             var fileData = await fileResponse.GetJsonAsync();
             // Distribute the chunks to the chunk servers
-            int chunkServerPointer = 0;
             List<int> successfullChunks = new List<int>();
             for( int r = 0; r < replicationLevel; r++)
             {
+                RandomShuffle(chunkServers);
+                int chunkServerPointer = 0;
                 for (int i = 0; i < chunks.Length; i++)
                 {
                     var chunkServer = chunkServers[chunkServerPointer % chunkServers.Length];
