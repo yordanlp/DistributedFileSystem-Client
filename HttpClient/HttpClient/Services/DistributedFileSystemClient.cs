@@ -91,13 +91,20 @@ namespace Client {
                 bool successfullRead = false;
                 foreach(var chunkData in g)
                 {
-                    var chunkResponse = await $"{chunkData.ChunkServerUrl}/api/Chunk/getChunk/{chunkData.Id}".GetAsync();
-                    if (!chunkResponse.ResponseMessage.IsSuccessStatusCode)
+                    try
+                    {
+                        var chunkResponse = await $"{chunkData.ChunkServerUrl}/api/Chunk/getChunk/{chunkData.Id}".GetAsync();
+                        if (!chunkResponse.ResponseMessage.IsSuccessStatusCode)
+                            continue;
+                        successfullRead = true;
+                        var chunk = await chunkResponse.ResponseMessage.Content.ReadAsStringAsync();
+                        fileData.Append(chunk);
+                        break;
+                    }
+                    catch(Exception e)
+                    {
                         continue;
-                    successfullRead = true;
-                    var chunk = await chunkResponse.ResponseMessage.Content.ReadAsStringAsync();
-                    fileData.Append(chunk);
-                    break;
+                    }
                 }
 
                 if (!successfullRead)
