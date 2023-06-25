@@ -32,26 +32,33 @@ namespace Client {
             string fileName = file.FileName;
             string fileContent = await ReadContentAsync(file);
 
-            // Split the file into chunks
             var chunks = SplitIntoChunks(fileContent);
 
-            // Send a request to the master server to get the chunk servers
+            //get the list of chunk servers
             var chunkServers = await $"{masterServerUrl}/api/ChunkServers".GetJsonAsync<ChunkServer[]>();
 
+            //get file metadata
             var fileResponse = await $"{masterServerUrl}/api/Files/".PostJsonAsync(new { Name = fileName, Size = fileContent.Length, NumberOfChunks = chunks.Length });
             var fileData = await fileResponse.GetJsonAsync();
+
             // Distribute the chunks to the chunk servers
             List<int> successfullChunks = new List<int>();
             for( int r = 0; r < replicationLevel; r++)
             {
+                //shuffle chunk servers order so the chunks are distributed randomly to ensure better fault tolerance
                 RandomShuffle(chunkServers);
                 int chunkServerPointer = 0;
                 for (int i = 0; i < chunks.Length; i++)
                 {
+                    //select chunk server in round robin fashion
                     var chunkServer = chunkServers[chunkServerPointer % chunkServers.Length];
                     chunkServerPointer++;
+
+                    //save chunk information in the master
                     var chunkResponse = await $"{masterServerUrl}/api/chunks".PostJsonAsync(new { FileId = fileData.id, ChunkServerUrl = chunkServer.host, ChunkNumber = i });
                     var chunkData = await chunkResponse.GetJsonAsync();
+
+                    //save chunk content in the chunk server
                     var result = await $"{chunkServer.host}/api/Chunk/storeChunk".PostJsonAsync(new { Data = chunks[i], Id = chunkData.id });
                     if (!result.ResponseMessage.IsSuccessStatusCode)
                     {
@@ -60,7 +67,8 @@ namespace Client {
                     successfullChunks.Add(i);
                 }
             }
-
+            
+            //check that every chunk was saved at least once
             if (successfullChunks.Distinct().Count() == chunks.Length)
                 return true;
             return false;
@@ -68,9 +76,10 @@ namespace Client {
 
         public async Task<string> ReadFile(string filename)
         {
-            // Request file metadata from the master server
+            // Get the list of chunk servers where the file is distributed
             var chunkDataList = await $"{masterServerUrl}/api/Chunks/GetChunks/{filename}".GetJsonAsync<ChunkData[]>();
 
+            //with this I'll get for each chunk number the list of chunk servers where the chunk is.
             var groupedChunks = chunkDataList.GroupBy(c => c.ChunkNumber).OrderBy(g => g.Key);
 
             var fileResponse = await $"{masterServerUrl}/api/Files/GetByName/{filename}".GetAsync();
@@ -81,6 +90,7 @@ namespace Client {
             var file = await fileResponse.GetJsonAsync();
             long numberOfChunks = file.numberOfChunks;
 
+            //check that the number of chunks expected is the number of chunks in the database
             if (numberOfChunks != groupedChunks.Count())
                 throw new Exception("File was not saved correctly");
 
@@ -91,6 +101,7 @@ namespace Client {
                 bool successfullRead = false;
                 foreach(var chunkData in g)
                 {
+                    //for each chunk try to read it from the first chunk sever that responds successfully
                     try
                     {
                         var chunkResponse = await $"{chunkData.ChunkServerUrl}/api/Chunk/getChunk/{chunkData.Id}".GetAsync();
